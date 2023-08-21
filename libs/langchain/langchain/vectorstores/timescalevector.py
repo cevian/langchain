@@ -43,7 +43,7 @@ class TimescaleVector(VectorStore):
     To use, you should have the ``timescale_vector`` python package installed.
 
     Args:
-        connection_string: Postgres connection string.
+        service_url: Service url on timescale cloud.
         embedding_function: Any embedding function implementing
             `langchain.embeddings.base.Embeddings` interface.
         collection_name: The name of the collection to use. (default: langchain_store)
@@ -58,14 +58,14 @@ class TimescaleVector(VectorStore):
             from langchain.vectorstores import TimescaleVector
             from langchain.embeddings.openai import OpenAIEmbeddings
 
-            CONNECTION_STRING = "postgresql://hwc@localhost:5432/test3"
+            SERVICE_URL = "postgres://tsdbadmin:<password>@<id>.tsdb.cloud.timescale.com:<port>/tsdb?sslmode=require"
             COLLECTION_NAME = "state_of_the_union_test"
             embeddings = OpenAIEmbeddings()
             vectorestore = TimescaleVector.from_documents(
                 embedding=embeddings,
                 documents=docs,
                 collection_name=COLLECTION_NAME,
-                connection_string=CONNECTION_STRING,
+                service_url=SERVICE_URL,
             )
 
 
@@ -73,7 +73,7 @@ class TimescaleVector(VectorStore):
 
     def __init__(
         self,
-        connection_string: str,
+        service_url: str,
         embedding_function: Embeddings,
         collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
         num_dimensions: int = ADA_TOKEN_COUNT,
@@ -82,7 +82,7 @@ class TimescaleVector(VectorStore):
         logger: Optional[logging.Logger] = None,
         relevance_score_fn: Optional[Callable[[float], float]] = None,
     ) -> None:
-        self.connection_string = connection_string
+        self.service_url = service_url
         self.embedding_function = embedding_function
         self.collection_name = collection_name
         self.num_dimensions = num_dimensions
@@ -90,8 +90,8 @@ class TimescaleVector(VectorStore):
         self.pre_delete_collection = pre_delete_collection
         self.logger = logger or logging.getLogger(__name__)
         self.override_relevance_score_fn = relevance_score_fn
-        self.sync_client = client.Sync(self.connection_string, self.collection_name, self.num_dimensions, self._distance_strategy.value)
-        self.async_client = client.Sync(self.connection_string, self.collection_name, self.num_dimensions, self._distance_strategy.value)
+        self.sync_client = client.Sync(self.service_url, self.collection_name, self.num_dimensions, self._distance_strategy.value)
+        self.async_client = client.Sync(self.service_url, self.collection_name, self.num_dimensions, self._distance_strategy.value)
         self.__post_init__()
 
     def __post_init__(
@@ -122,7 +122,7 @@ class TimescaleVector(VectorStore):
         ids: Optional[List[str]] = None,
         collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
         distance_strategy: DistanceStrategy = DEFAULT_DISTANCE_STRATEGY,
-        connection_string: Optional[str] = None,
+        service_url: Optional[str] = None,
         pre_delete_collection: bool = False,
         **kwargs: Any,
     ) -> TimescaleVector:
@@ -134,11 +134,11 @@ class TimescaleVector(VectorStore):
         if not metadatas:
             metadatas = [{} for _ in texts]
 
-        if connection_string is None:
-            connection_string = cls.get_connection_string(kwargs)
+        if service_url is None:
+            service_url = cls.get_service_url(kwargs)
 
         store = cls(
-            connection_string=connection_string,
+            service_url=service_url,
             num_dimensions=num_dimensions,
             collection_name=collection_name,
             embedding_function=embedding,
@@ -320,7 +320,7 @@ class TimescaleVector(VectorStore):
         Return VectorStore initialized from texts and embeddings.
         Postgres connection string is required
         "Either pass it as a parameter
-        or set the TIMESCALEVECTOR_CONNECTION_STRING environment variable.
+        or set the TIMESCALE_SERVICE_URL environment variable.
         """
         embeddings = embedding.embed_documents(list(texts))
 
@@ -354,7 +354,7 @@ class TimescaleVector(VectorStore):
         Return VectorStore initialized from documents and embeddings.
         Postgres connection string is required
         "Either pass it as a parameter
-        or set the TIMESCALEVECTOR_CONNECTION_STRING environment variable.
+        or set the TIMESCALE_SERVICE_URL environment variable.
 
         Example:
             .. code-block:: python
@@ -396,10 +396,10 @@ class TimescaleVector(VectorStore):
         embeddings
         """
 
-        connection_string = cls.get_connection_string(kwargs)
+        service_url = cls.get_service_url(kwargs)
 
         store = cls(
-            connection_string=connection_string,
+            service_url=service_url,
             collection_name=collection_name,
             embedding_function=embedding,
             distance_strategy=distance_strategy,
@@ -409,21 +409,21 @@ class TimescaleVector(VectorStore):
         return store
 
     @classmethod
-    def get_connection_string(cls, kwargs: Dict[str, Any]) -> str:
-        connection_string: str = get_from_dict_or_env(
+    def get_service_url(cls, kwargs: Dict[str, Any]) -> str:
+        service_url: str = get_from_dict_or_env(
             data=kwargs,
-            key="connection_string",
-            env_key="TIMESCALEVECTOR_CONNECTION_STRING",
+            key="service_url",
+            env_key="TIMESCALE_SERVICE_URL",
         )
 
-        if not connection_string:
+        if not service_url:
             raise ValueError(
                 "Postgres connection string is required"
                 "Either pass it as a parameter"
-                "or set the TIMESCALEVECTOR_CONNECTION_STRING environment variable."
+                "or set the TIMESCALE_SERVICE_URL environment variable."
             )
 
-        return connection_string
+        return service_url
 
     @classmethod
     def from_documents(
@@ -440,14 +440,14 @@ class TimescaleVector(VectorStore):
         Return VectorStore initialized from documents and embeddings.
         Postgres connection string is required
         "Either pass it as a parameter
-        or set the TIMESCALEVECTOR_CONNECTION_STRING environment variable.
+        or set the TIMESCALE_SERVICE_URL environment variable.
         """
 
         texts = [d.page_content for d in documents]
         metadatas = [d.metadata for d in documents]
-        connection_string = cls.get_connection_string(kwargs)
+        service_url = cls.get_service_url(kwargs)
 
-        kwargs["connection_string"] = connection_string
+        kwargs["service_url"] = service_url
 
         return cls.from_texts(
             texts=texts,
@@ -461,7 +461,7 @@ class TimescaleVector(VectorStore):
         )
 
     @classmethod
-    def connection_string_from_db_params(
+    def service_url_from_db_params(
         cls,
         host: str,
         port: int,

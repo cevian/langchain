@@ -6,12 +6,12 @@ from langchain.docstore.document import Document
 from langchain.vectorstores.timescalevector import TimescaleVector
 from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
 
-CONNECTION_STRING = TimescaleVector.connection_string_from_db_params(
-    host=os.environ.get("TEST_TIMESCALEVECTOR_HOST", "localhost"),
-    port=int(os.environ.get("TEST_TIMESCALEVECTOR_PORT", "5432")),
-    database=os.environ.get("TEST_TIMESCALEVECTOR_DATABASE", "postgres"),
-    user=os.environ.get("TEST_TIMESCALEVECTOR_USER", "postgres"),
-    password=os.environ.get("TEST_TIMESCALEVECTOR_PASSWORD", "postgres"),
+SERVICE_URL = TimescaleVector.service_url_from_db_params(
+    host=os.environ.get("TEST_TIMESCALE_HOST", "localhost"),
+    port=int(os.environ.get("TEST_TIMESCALE_PORT", "5432")),
+    database=os.environ.get("TEST_TIMESCALE_DATABASE", "postgres"),
+    user=os.environ.get("TEST_TIMESCALE_USER", "postgres"),
+    password=os.environ.get("TEST_TIMESCALE_PASSWORD", "postgres"),
 )
 
 
@@ -39,7 +39,7 @@ def test_timescalevector() -> None:
         texts=texts,
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search("foo", k=1)
@@ -55,7 +55,7 @@ def test_timescalevector_embeddings() -> None:
         text_embeddings=text_embedding_pairs,
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search("foo", k=1)
@@ -71,7 +71,7 @@ def test_timescalevector_with_metadatas() -> None:
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search("foo", k=1)
@@ -87,7 +87,7 @@ def test_timescalevector_with_metadatas_with_scores() -> None:
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score("foo", k=1)
@@ -103,7 +103,7 @@ def test_timescalevector_with_filter_match() -> None:
         collection_name="test_collection_filter",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score("foo", k=1, filter={"page": "0"})
@@ -119,7 +119,7 @@ def test_timescalevector_with_filter_distant_match() -> None:
         collection_name="test_collection_filter",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score("foo", k=1, filter={"page": "2"})
@@ -137,7 +137,7 @@ def test_timescalevector_with_filter_no_match() -> None:
         collection_name="test_collection_filter",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score("foo", k=1, filter={"page": "5"})
@@ -153,7 +153,7 @@ def test_timescalevector_with_filter_in_set() -> None:
         collection_name="test_collection_filter",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score(
@@ -174,7 +174,7 @@ def test_timescalevector_relevance_score() -> None:
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
 
@@ -195,7 +195,7 @@ def test_timescalevector_retriever_search_threshold() -> None:
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
     )
 
@@ -219,7 +219,7 @@ def test_timescalevector_retriever_search_threshold_custom_normalization_fn() ->
         collection_name="test_collection",
         embedding=FakeEmbeddingsWithAdaDimension(),
         metadatas=metadatas,
-        connection_string=CONNECTION_STRING,
+        service_url=SERVICE_URL,
         pre_delete_collection=True,
         relevance_score_fn=lambda d: d * 0,
     )
