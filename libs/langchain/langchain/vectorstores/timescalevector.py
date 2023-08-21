@@ -21,7 +21,7 @@ from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.utils import get_from_dict_or_env
 from langchain.vectorstores.base import VectorStore
-from timescale_vector import client
+
 
 class DistanceStrategy(str, enum.Enum):
     """Enumerator of the Distance strategies."""
@@ -82,6 +82,14 @@ class TimescaleVector(VectorStore):
         logger: Optional[logging.Logger] = None,
         relevance_score_fn: Optional[Callable[[float], float]] = None,
     ) -> None:
+        try:
+            from timescale_vector import client
+        except ImportError:
+            raise ValueError(
+                "Could not import timescale_vector python package. "
+                "Please install it with `pip install timescale-vector`."
+            )
+
         self.service_url = service_url
         self.embedding_function = embedding_function
         self.collection_name = collection_name
@@ -268,6 +276,14 @@ class TimescaleVector(VectorStore):
         k: int = 4,
         filter: Optional[dict] = None,
     ) -> List[Tuple[Document, float]]:
+        try:
+            from timescale_vector import client
+        except ImportError:
+            raise ValueError(
+                "Could not import timescale_vector python package. "
+                "Please install it with `pip install timescale-vector`."
+            )
+
         results = self.sync_client.search(embedding, k=k, filter=filter)
 
         docs = [
@@ -281,6 +297,9 @@ class TimescaleVector(VectorStore):
             for result in results
         ]
         return docs
+
+    def create_ivfflat_index(self, num_records=None):
+        self.sync_client.create_ivfflat_index(num_records=num_records)
 
     def similarity_search_by_vector(
         self,
