@@ -99,7 +99,7 @@ class TimescaleVector(VectorStore):
         self.logger = logger or logging.getLogger(__name__)
         self.override_relevance_score_fn = relevance_score_fn
         self.sync_client = client.Sync(self.service_url, self.collection_name, self.num_dimensions, self._distance_strategy.value)
-        self.async_client = client.Sync(self.service_url, self.collection_name, self.num_dimensions, self._distance_strategy.value)
+        self.async_client = client.Async(self.service_url, self.collection_name, self.num_dimensions, self._distance_strategy.value)
         self.__post_init__()
 
     def __post_init__(
@@ -117,7 +117,6 @@ class TimescaleVector(VectorStore):
         return self.embedding_function
 
     def drop_tables(self) -> None:
-        #todo
         self.sync_client.drop_table()
 
     @classmethod
@@ -161,6 +160,48 @@ class TimescaleVector(VectorStore):
 
         return store
 
+    @classmethod
+    async def __afrom(
+        cls,
+        texts: List[str],
+        embeddings: List[List[float]],
+        embedding: Embeddings,
+        metadatas: Optional[List[dict]] = None,
+        ids: Optional[List[str]] = None,
+        collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
+        distance_strategy: DistanceStrategy = DEFAULT_DISTANCE_STRATEGY,
+        service_url: Optional[str] = None,
+        pre_delete_collection: bool = False,
+        **kwargs: Any,
+    ) -> TimescaleVector:
+        num_dimensions = len(embeddings[0])
+
+        if ids is None:
+            ids = [str(uuid.uuid1()) for _ in texts]
+
+        if not metadatas:
+            metadatas = [{} for _ in texts]
+
+        if service_url is None:
+            service_url = cls.get_service_url(kwargs)
+
+        store = cls(
+            service_url=service_url,
+            num_dimensions=num_dimensions,
+            collection_name=collection_name,
+            embedding_function=embedding,
+            distance_strategy=distance_strategy,
+            pre_delete_collection=pre_delete_collection,
+            **kwargs,
+        )
+
+        await store.aadd_embeddings(
+            texts=texts, embeddings=embeddings, metadatas=metadatas, ids=ids, **kwargs
+        )
+
+        return store
+
+
     def add_embeddings(
         self,
         texts: Iterable[str],
@@ -188,6 +229,33 @@ class TimescaleVector(VectorStore):
 
         return ids
 
+    async def aadd_embeddings(
+        self,
+        texts: Iterable[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[dict]] = None,
+        ids: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Add embeddings to the vectorstore.
+
+        Args:
+            texts: Iterable of strings to add to the vectorstore.
+            embeddings: List of list of embedding vectors.
+            metadatas: List of metadatas associated with the texts.
+            kwargs: vectorstore specific parameters
+        """
+        if ids is None:
+            ids = [str(uuid.uuid1()) for _ in texts]
+
+        if not metadatas:
+            metadatas = [{} for _ in texts]
+
+        records = list(zip(ids, metadatas, texts, embeddings))
+        await self.async_client.upsert(records)
+
+        return ids
+
     def add_texts(
         self,
         texts: Iterable[str],
@@ -210,6 +278,29 @@ class TimescaleVector(VectorStore):
             texts=texts, embeddings=embeddings, metadatas=metadatas, ids=ids, **kwargs
         )
 
+    async def aadd_texts(
+        self,
+        texts: Iterable[str],
+        metadatas: Optional[List[dict]] = None,
+        ids: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Run more texts through the embeddings and add to the vectorstore.
+
+        Args:
+            texts: Iterable of strings to add to the vectorstore.
+            metadatas: Optional list of metadatas associated with the texts.
+            kwargs: vectorstore specific parameters
+
+        Returns:
+            List of ids from adding the texts into the vectorstore.
+        """
+        embeddings = self.embedding_function.embed_documents(list(texts))
+        return await self.aadd_embeddings(
+            texts=texts, embeddings=embeddings, metadatas=metadatas, ids=ids, **kwargs
+        )
+
+
     def similarity_search(
         self,
         query: str,
@@ -229,6 +320,30 @@ class TimescaleVector(VectorStore):
         """
         embedding = self.embedding_function.embed_query(text=query)
         return self.similarity_search_by_vector(
+            embedding=embedding,
+            k=k,
+            filter=filter,
+        )
+
+    async def asimilarity_search(
+        self,
+        query: str,
+        k: int = 4,
+        filter: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Run similarity search with TimescaleVector with distance.
+
+        Args:
+            query (str): Query text to search for.
+            k (int): Number of results to return. Defaults to 4.
+            filter (Optional[Dict[str, str]]): Filter by metadata. Defaults to None.
+
+        Returns:
+            List of Documents most similar to the query.
+        """
+        embedding = self.embedding_function.embed_query(text=query)
+        return await self.asimilarity_search_by_vector(
             embedding=embedding,
             k=k,
             filter=filter,
@@ -255,6 +370,27 @@ class TimescaleVector(VectorStore):
             embedding=embedding, k=k, filter=filter
         )
         return docs
+
+    async def asimilarity_search_with_score(
+        self,
+        query: str,
+        k: int = 4,
+        filter: Optional[dict] = None,
+    ) -> List[Tuple[Document, float]]:
+        """Return docs most similar to query.
+
+        Args:
+            query: Text to look up documents similar to.
+            k: Number of Documents to return. Defaults to 4.
+            filter (Optional[Dict[str, str]]): Filter by metadata. Defaults to None.
+
+        Returns:
+            List of Documents most similar to the query and score for each
+        """
+        embedding = self.embedding_function.embed_query(query)
+        return await self.asimilarity_search_with_score_by_vector(
+            embedding=embedding, k=k, filter=filter
+        )
 
     @property
     def distance_strategy(self) -> Any:
@@ -298,6 +434,37 @@ class TimescaleVector(VectorStore):
         ]
         return docs
 
+    async def asimilarity_search_with_score_by_vector(
+        self,
+        embedding: List[float],
+        k: int = 4,
+        filter: Optional[dict] = None,
+    ) -> List[Tuple[Document, float]]:
+        try:
+            from timescale_vector import client
+        except ImportError:
+            raise ValueError(
+                "Could not import timescale_vector python package. "
+                "Please install it with `pip install timescale-vector`."
+            )
+
+        results = await self.async_client.search(embedding, k=k, filter=filter)
+
+        print(type(results[0][client.SEARCH_RESULT_METADATA_IDX]))
+
+        docs = [
+            (
+                Document(
+                    page_content=result[client.SEARCH_RESULT_CONTENTS_IDX],
+                    metadata=result[client.SEARCH_RESULT_METADATA_IDX],
+                ),
+                result[client.SEARCH_RESULT_DISTANCE_IDX],
+            )
+            for result in results
+        ]
+        return docs
+
+
     def create_ivfflat_index(self, num_records=None):
         self.sync_client.create_ivfflat_index(num_records=num_records)
 
@@ -323,6 +490,28 @@ class TimescaleVector(VectorStore):
         )
         return [doc for doc, _ in docs_and_scores]
 
+    async def asimilarity_search_by_vector(
+        self,
+        embedding: List[float],
+        k: int = 4,
+        filter: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Return docs most similar to embedding vector.
+
+        Args:
+            embedding: Embedding to look up documents similar to.
+            k: Number of Documents to return. Defaults to 4.
+            filter (Optional[Dict[str, str]]): Filter by metadata. Defaults to None.
+
+        Returns:
+            List of Documents most similar to the query vector.
+        """
+        docs_and_scores = await self.asimilarity_search_with_score_by_vector(
+            embedding=embedding, k=k, filter=filter
+        )
+        return [doc for doc, _ in docs_and_scores]
+
     @classmethod
     def from_texts(
         cls: Type[TimescaleVector],
@@ -344,6 +533,38 @@ class TimescaleVector(VectorStore):
         embeddings = embedding.embed_documents(list(texts))
 
         return cls.__from(
+            texts,
+            embeddings,
+            embedding,
+            metadatas=metadatas,
+            ids=ids,
+            collection_name=collection_name,
+            distance_strategy=distance_strategy,
+            pre_delete_collection=pre_delete_collection,
+            **kwargs,
+        )
+
+    @classmethod
+    async def afrom_texts(
+        cls: Type[TimescaleVector],
+        texts: List[str],
+        embedding: Embeddings,
+        metadatas: Optional[List[dict]] = None,
+        collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
+        distance_strategy: DistanceStrategy = DEFAULT_DISTANCE_STRATEGY,
+        ids: Optional[List[str]] = None,
+        pre_delete_collection: bool = False,
+        **kwargs: Any,
+    ) -> TimescaleVector:
+        """
+        Return VectorStore initialized from texts and embeddings.
+        Postgres connection string is required
+        "Either pass it as a parameter
+        or set the TIMESCALE_SERVICE_URL environment variable.
+        """
+        embeddings = embedding.embed_documents(list(texts))
+
+        return await cls.__afrom(
             texts,
             embeddings,
             embedding,
@@ -401,6 +622,51 @@ class TimescaleVector(VectorStore):
         )
 
     @classmethod
+    async def afrom_embeddings(
+        cls,
+        text_embeddings: List[Tuple[str, List[float]]],
+        embedding: Embeddings,
+        metadatas: Optional[List[dict]] = None,
+        collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
+        distance_strategy: DistanceStrategy = DEFAULT_DISTANCE_STRATEGY,
+        ids: Optional[List[str]] = None,
+        pre_delete_collection: bool = False,
+        **kwargs: Any,
+    ) -> TimescaleVector:
+        """Construct TimescaleVector wrapper from raw documents and pre-
+        generated embeddings.
+
+        Return VectorStore initialized from documents and embeddings.
+        Postgres connection string is required
+        "Either pass it as a parameter
+        or set the TIMESCALE_SERVICE_URL environment variable.
+
+        Example:
+            .. code-block:: python
+
+                from langchain import TimescaleVector
+                from langchain.embeddings import OpenAIEmbeddings
+                embeddings = OpenAIEmbeddings()
+                text_embeddings = embeddings.embed_documents(texts)
+                text_embedding_pairs = list(zip(texts, text_embeddings))
+                faiss = TimescaleVector.from_embeddings(text_embedding_pairs, embeddings)
+        """
+        texts = [t[0] for t in text_embeddings]
+        embeddings = [t[1] for t in text_embeddings]
+
+        return await cls.__afrom(
+            texts,
+            embeddings,
+            embedding,
+            metadatas=metadatas,
+            ids=ids,
+            collection_name=collection_name,
+            distance_strategy=distance_strategy,
+            pre_delete_collection=pre_delete_collection,
+            **kwargs,
+        )
+
+    @classmethod
     def from_existing_index(
         cls: Type[TimescaleVector],
         embedding: Embeddings,
@@ -443,41 +709,6 @@ class TimescaleVector(VectorStore):
             )
 
         return service_url
-
-    @classmethod
-    def from_documents(
-        cls: Type[TimescaleVector],
-        documents: List[Document],
-        embedding: Embeddings,
-        collection_name: str = _LANGCHAIN_DEFAULT_COLLECTION_NAME,
-        distance_strategy: DistanceStrategy = DEFAULT_DISTANCE_STRATEGY,
-        ids: Optional[List[str]] = None,
-        pre_delete_collection: bool = False,
-        **kwargs: Any,
-    ) -> TimescaleVector:
-        """
-        Return VectorStore initialized from documents and embeddings.
-        Postgres connection string is required
-        "Either pass it as a parameter
-        or set the TIMESCALE_SERVICE_URL environment variable.
-        """
-
-        texts = [d.page_content for d in documents]
-        metadatas = [d.metadata for d in documents]
-        service_url = cls.get_service_url(kwargs)
-
-        kwargs["service_url"] = service_url
-
-        return cls.from_texts(
-            texts=texts,
-            pre_delete_collection=pre_delete_collection,
-            embedding=embedding,
-            distance_strategy=distance_strategy,
-            metadatas=metadatas,
-            ids=ids,
-            collection_name=collection_name,
-            **kwargs,
-        )
 
     @classmethod
     def service_url_from_db_params(

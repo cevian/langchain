@@ -6,6 +6,8 @@ from langchain.docstore.document import Document
 from langchain.vectorstores.timescalevector import TimescaleVector
 from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
 
+import pytest
+
 SERVICE_URL = TimescaleVector.service_url_from_db_params(
     host=os.environ.get("TEST_TIMESCALE_HOST", "localhost"),
     port=int(os.environ.get("TEST_TIMESCALE_PORT", "5432")),
@@ -45,6 +47,35 @@ def test_timescalevector() -> None:
     output = docsearch.similarity_search("foo", k=1)
     assert output == [Document(page_content="foo")]
 
+def test_timescalevector_from_documents() -> None:
+    """Test end to end construction and search."""
+    texts = ["foo", "bar", "baz"]
+    docs = [Document(page_content=t, metadata={"a": "b"}) for t in texts]
+    docsearch = TimescaleVector.from_documents(
+        documents=docs,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    output = docsearch.similarity_search("foo", k=1)
+    assert output == [Document(page_content="foo", metadata={"a": "b"})]
+
+@pytest.mark.asyncio
+async def test_timescalevector_afrom_documents() -> None:
+    """Test end to end construction and search."""
+    texts = ["foo", "bar", "baz"]
+    docs = [Document(page_content=t, metadata={"a": "b"}) for t in texts]
+    docsearch = await TimescaleVector.afrom_documents(
+        documents=docs,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    output = await docsearch.asimilarity_search("foo", k=1)
+    assert output == [Document(page_content="foo", metadata={"a": "b"})]
+
 
 def test_timescalevector_embeddings() -> None:
     """Test end to end construction with embeddings and search."""
@@ -60,6 +91,23 @@ def test_timescalevector_embeddings() -> None:
     )
     output = docsearch.similarity_search("foo", k=1)
     assert output == [Document(page_content="foo")]
+
+@pytest.mark.asyncio
+async def test_timescalevector_aembeddings() -> None:
+    """Test end to end construction with embeddings and search."""
+    texts = ["foo", "bar", "baz"]
+    text_embeddings = FakeEmbeddingsWithAdaDimension().embed_documents(texts)
+    text_embedding_pairs = list(zip(texts, text_embeddings))
+    docsearch = await TimescaleVector.afrom_embeddings(
+        text_embeddings=text_embedding_pairs,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    output = await docsearch.asimilarity_search("foo", k=1)
+    assert output == [Document(page_content="foo")]
+
 
 
 def test_timescalevector_with_metadatas() -> None:
@@ -91,6 +139,22 @@ def test_timescalevector_with_metadatas_with_scores() -> None:
         pre_delete_collection=True,
     )
     output = docsearch.similarity_search_with_score("foo", k=1)
+    assert output == [(Document(page_content="foo", metadata={"page": "0"}), 0.0)]
+
+@pytest.mark.asyncio
+async def test_timescalevector_awith_metadatas_with_scores() -> None:
+    """Test end to end construction and search."""
+    texts = ["foo", "bar", "baz"]
+    metadatas = [{"page": str(i)} for i in range(len(texts))]
+    docsearch = await TimescaleVector.afrom_texts(
+        texts=texts,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        metadatas=metadatas,
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    output = await docsearch.asimilarity_search_with_score("foo", k=1)
     assert output == [(Document(page_content="foo", metadata={"page": "0"}), 0.0)]
 
 
@@ -179,6 +243,27 @@ def test_timescalevector_relevance_score() -> None:
     )
 
     output = docsearch.similarity_search_with_relevance_scores("foo", k=3)
+    assert output == [
+        (Document(page_content="foo", metadata={"page": "0"}), 1.0),
+        (Document(page_content="bar", metadata={"page": "1"}), 0.9996744261675065),
+        (Document(page_content="baz", metadata={"page": "2"}), 0.9986996093328621),
+    ]
+
+@pytest.mark.asyncio
+async def test_timescalevector_relevance_score() -> None:
+    """Test to make sure the relevance score is scaled to 0-1."""
+    texts = ["foo", "bar", "baz"]
+    metadatas = [{"page": str(i)} for i in range(len(texts))]
+    docsearch = await TimescaleVector.afrom_texts(
+        texts=texts,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        metadatas=metadatas,
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+
+    output = await docsearch.asimilarity_search_with_relevance_scores("foo", k=3)
     assert output == [
         (Document(page_content="foo", metadata={"page": "0"}), 1.0),
         (Document(page_content="bar", metadata={"page": "1"}), 0.9996744261675065),
