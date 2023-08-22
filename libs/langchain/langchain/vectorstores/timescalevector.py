@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    Union
 )
 
 
@@ -748,3 +749,36 @@ class TimescaleVector(VectorStore):
                 f" for distance_strategy of {self._distance_strategy}."
                 "Consider providing relevance_score_fn to TimescaleVector constructor."
             )
+
+    def delete(self, ids: Optional[List[str]] = None, **kwargs: Any) -> Optional[bool]:
+        """Delete by vector ID or other criteria.
+
+        Args:
+            ids: List of ids to delete.
+            **kwargs: Other keyword arguments that subclasses might use.
+
+        Returns:
+            Optional[bool]: True if deletion is successful,
+            False otherwise, None if not implemented.
+        """
+        if ids is None:
+            raise ValueError("No ids provided to delete.")
+
+        self.sync_client.delete_by_ids(ids)
+        return True
+
+    # todo should this be part of delete|()?
+    def delete_by_metadata(self, filter: Union[Dict[str, str], List[Dict[str, str]]], **kwargs: Any) -> Optional[bool]:
+        """Delete by vector ID or other criteria.
+
+        Args:
+            ids: List of ids to delete.
+            **kwargs: Other keyword arguments that subclasses might use.
+
+        Returns:
+            Optional[bool]: True if deletion is successful,
+            False otherwise, None if not implemented.
+        """
+
+        self.sync_client.delete_by_metadata(filter)
+        return True

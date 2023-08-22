@@ -315,3 +315,29 @@ def test_timescalevector_retriever_search_threshold_custom_normalization_fn() ->
     )
     output = retriever.get_relevant_documents("foo")
     assert output == []
+
+def test_timescalevector_delete() -> None:
+    """Test deleting functionality."""
+    texts = ["bar", "baz"]
+    docs = [Document(page_content=t, metadata={"a": "b"}) for t in texts]
+    docsearch = TimescaleVector.from_documents(
+        documents=docs,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    texts = ["foo"]
+    meta = [{"b":"c"}]
+    ids = docsearch.add_texts(texts, meta)
+
+    output = docsearch.similarity_search("bar", k=10)
+    assert len(output) == 3
+    docsearch.delete(ids)
+
+    output = docsearch.similarity_search("bar", k=10)
+    assert len(output) == 2
+
+    docsearch.delete_by_metadata({"a": "b"})
+    output = docsearch.similarity_search("bar", k=10)
+    assert len(output) == 0
