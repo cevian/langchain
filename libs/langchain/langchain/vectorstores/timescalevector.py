@@ -421,7 +421,7 @@ class TimescaleVector(VectorStore):
                 "Please install it with `pip install timescale-vector`."
             )
 
-        results = self.sync_client.search(embedding, k=k, filter=filter)
+        results = self.sync_client.search(embedding, limit=k, filter=filter)
 
         docs = [
             (
@@ -449,7 +449,7 @@ class TimescaleVector(VectorStore):
                 "Please install it with `pip install timescale-vector`."
             )
 
-        results = await self.async_client.search(embedding, k=k, filter=filter)
+        results = await self.async_client.search(embedding, limit=k, filter=filter)
 
         print(type(results[0][client.SEARCH_RESULT_METADATA_IDX]))
 
