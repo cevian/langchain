@@ -23,6 +23,8 @@ from langchain.embeddings.base import Embeddings
 from langchain.utils import get_from_dict_or_env
 from langchain.vectorstores.base import VectorStore
 
+if TYPE_CHECKING:
+    from timescale_vector import Predicates
 
 class DistanceStrategy(str, enum.Enum):
     """Enumerator of the Distance strategies."""
@@ -307,6 +309,7 @@ class TimescaleVector(VectorStore):
         query: str,
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
         **kwargs: Any,
     ) -> List[Document]:
         """Run similarity search with TimescaleVector with distance.
@@ -324,6 +327,7 @@ class TimescaleVector(VectorStore):
             embedding=embedding,
             k=k,
             filter=filter,
+            predicates=predicates,
         )
 
     async def asimilarity_search(
@@ -331,6 +335,7 @@ class TimescaleVector(VectorStore):
         query: str,
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
         **kwargs: Any,
     ) -> List[Document]:
         """Run similarity search with TimescaleVector with distance.
@@ -348,6 +353,7 @@ class TimescaleVector(VectorStore):
             embedding=embedding,
             k=k,
             filter=filter,
+            predicates=predicates,
         )
 
     def similarity_search_with_score(
@@ -355,6 +361,7 @@ class TimescaleVector(VectorStore):
         query: str,
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
     ) -> List[Tuple[Document, float]]:
         """Return docs most similar to query.
 
@@ -368,7 +375,7 @@ class TimescaleVector(VectorStore):
         """
         embedding = self.embedding_function.embed_query(query)
         docs = self.similarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter
+            embedding=embedding, k=k, filter=filter, predicates=predicates
         )
         return docs
 
@@ -377,6 +384,7 @@ class TimescaleVector(VectorStore):
         query: str,
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
     ) -> List[Tuple[Document, float]]:
         """Return docs most similar to query.
 
@@ -390,7 +398,7 @@ class TimescaleVector(VectorStore):
         """
         embedding = self.embedding_function.embed_query(query)
         return await self.asimilarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter
+            embedding=embedding, k=k, filter=filter, predicates=predicates
         )
 
     @property
@@ -412,6 +420,7 @@ class TimescaleVector(VectorStore):
         embedding: List[float],
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
     ) -> List[Tuple[Document, float]]:
         try:
             from timescale_vector import client
@@ -421,7 +430,7 @@ class TimescaleVector(VectorStore):
                 "Please install it with `pip install timescale-vector`."
             )
 
-        results = self.sync_client.search(embedding, limit=k, filter=filter)
+        results = self.sync_client.search(embedding, limit=k, filter=filter, predicates=predicates)
 
         docs = [
             (
@@ -440,6 +449,7 @@ class TimescaleVector(VectorStore):
         embedding: List[float],
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
     ) -> List[Tuple[Document, float]]:
         try:
             from timescale_vector import client
@@ -449,7 +459,7 @@ class TimescaleVector(VectorStore):
                 "Please install it with `pip install timescale-vector`."
             )
 
-        results = await self.async_client.search(embedding, limit=k, filter=filter)
+        results = await self.async_client.search(embedding, limit=k, filter=filter, predicates=predicates)
 
         print(type(results[0][client.SEARCH_RESULT_METADATA_IDX]))
 
@@ -474,6 +484,7 @@ class TimescaleVector(VectorStore):
         embedding: List[float],
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
         **kwargs: Any,
     ) -> List[Document]:
         """Return docs most similar to embedding vector.
@@ -487,7 +498,7 @@ class TimescaleVector(VectorStore):
             List of Documents most similar to the query vector.
         """
         docs_and_scores = self.similarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter
+            embedding=embedding, k=k, filter=filter, predicates=predicates
         )
         return [doc for doc, _ in docs_and_scores]
 
@@ -496,6 +507,7 @@ class TimescaleVector(VectorStore):
         embedding: List[float],
         k: int = 4,
         filter: Optional[dict] = None,
+        predicates: Optional[Predicates] = None,
         **kwargs: Any,
     ) -> List[Document]:
         """Return docs most similar to embedding vector.
@@ -509,7 +521,7 @@ class TimescaleVector(VectorStore):
             List of Documents most similar to the query vector.
         """
         docs_and_scores = await self.asimilarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter
+            embedding=embedding, k=k, filter=filter, predicates=predicates
         )
         return [doc for doc, _ in docs_and_scores]
 
