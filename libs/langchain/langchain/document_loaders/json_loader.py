@@ -90,13 +90,14 @@ class JSONLoader(BaseLoader):
         """Convert sample to string format"""
         if self._content_key is not None:
             content = sample.get(self._content_key)
-            if self._metadata_func is not None:
+            
+        else:
+            content = sample
+        if self._metadata_func is not None:
                 # We pass in the metadata dict to the metadata_func
                 # so that the user can customize the default metadata
                 # based on the content of the JSON object.
                 metadata = self._metadata_func(sample, metadata)
-        else:
-            content = sample
 
         if self._text_content and not isinstance(content, str):
             raise ValueError(
