@@ -5,6 +5,7 @@ from typing import List
 from langchain.docstore.document import Document
 from langchain.vectorstores.timescalevector import TimescaleVector
 from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
+from datetime import timedelta, datetime
 
 import pytest
 
@@ -341,3 +342,68 @@ def test_timescalevector_delete() -> None:
     docsearch.delete_by_metadata({"a": "b"})
     output = docsearch.similarity_search("bar", k=10)
     assert len(output) == 0
+
+def test_timescalevector_with_index() -> None:
+    """Test deleting functionality."""
+    texts = ["bar", "baz"]
+    docs = [Document(page_content=t, metadata={"a": "b"}) for t in texts]
+    docsearch = TimescaleVector.from_documents(
+        documents=docs,
+        collection_name="test_collection",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+    )
+    texts = ["foo"]
+    meta = [{"b":"c"}]
+    ids = docsearch.add_texts(texts, meta)
+
+    docsearch.create_index()
+
+    output = docsearch.similarity_search("bar", k=10)
+    assert len(output) == 3
+
+    docsearch.drop_index()
+    docsearch.create_index(index_type=TimescaleVector.IndexType.TIMESCALE_VECTOR, max_alpha=1.0, num_neighbors=50)
+
+    docsearch.drop_index()
+    docsearch.create_index("tsv", max_alpha=1.0, num_neighbors=50)
+
+    docsearch.drop_index()
+    docsearch.create_index("ivfflat", num_lists = 20, num_records = 1000)
+
+    docsearch.drop_index()
+    docsearch.create_index("hnsw", m=16, ef_construction=64)
+
+def test_timescalevector_time_partitioning() -> None:
+    """Test deleting functionality."""
+    texts = ["bar", "baz"]
+    docs = [Document(page_content=t, metadata={"a": "b"}) for t in texts]
+    docsearch = TimescaleVector.from_documents(
+        documents=docs,
+        collection_name="test_collection_time_partitioning",
+        embedding=FakeEmbeddingsWithAdaDimension(),
+        service_url=SERVICE_URL,
+        pre_delete_collection=True,
+        time_partition_interval= timedelta(hours=1),
+    )
+    texts = ["foo"]
+    meta = [{"b":"c"}]
+    from timescale_vector import client
+    ids = [client.uuid_from_time(datetime.now() - timedelta(hours=3))]
+    docsearch.add_texts(texts, meta, ids)
+
+    output = docsearch.similarity_search("bar", k=10)
+    assert len(output) == 3
+
+    output = docsearch.similarity_search("bar", k=10, start_date = datetime.now() - timedelta(hours=1))
+    assert len(output) == 2
+
+    output = docsearch.similarity_search("bar", k=10, end_date = datetime.now() - timedelta(hours=1))
+    assert len(output) == 1
+
+    output = docsearch.similarity_search("bar", k=10, start_date = datetime.now() - timedelta(minutes=200))
+    assert len(output) == 3
+
+    output = docsearch.similarity_search("bar", k=10, start_date = datetime.now() - timedelta(minutes=200), time_delta = timedelta(hours=1))
+    assert len(output) == 1

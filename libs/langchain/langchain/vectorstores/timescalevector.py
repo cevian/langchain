@@ -422,9 +422,9 @@ class TimescaleVector(VectorStore):
             )
 
     def date_to_range_filter(self, **kwargs) -> Any:
-        start_date = kwargs.get("start_date")
-        end_date = kwargs.get("end_date")
-        time_delta = kwargs.get("time_delta")
+        constructor_args = {key: kwargs[key] for key in ["start_date", "end_date", "time_delta", "start_inclusive", "end_inclusive"] if key in kwargs}
+        if not constructor_args or len(constructor_args) == 0:
+            return None
 
         try:
             from timescale_vector import client
@@ -433,28 +433,7 @@ class TimescaleVector(VectorStore):
                 "Could not import timescale_vector python package. "
                 "Please install it with `pip install timescale-vector`."
             )
-
-        if not start_date and not end_date:
-            return
-
-        if start_date and not isinstance(start_date, datetime):
-            raise ValueError("start_date should be a datetime object.")
-
-        if end_date and not isinstance(end_date, datetime):
-            raise ValueError("end_date should be a datetime object.")
-
-        if time_delta and not isinstance(time_delta, timedelta):
-            raise ValueError("time_delta should be a timedelta object.")
-
-        if start_date and time_delta and not end_date:
-            end_date = start_date + time_delta
-
-        if end_date and time_delta and not start_date:
-            start_date = end_date - time_delta
-
-        include_start_time = True
-        include_end_time = True
-        return client.UUIDTimeRange(start_date, end_date, include_start_time, include_end_time)
+        return client.UUIDTimeRange(**constructor_args)
 
     def similarity_search_with_score_by_vector(
         self,
@@ -504,8 +483,6 @@ class TimescaleVector(VectorStore):
 
         results = await self.async_client.search(embedding, limit=k, filter=filter, predicates=predicates, uuid_time_filter=self.date_to_range_filter(**kwargs))
 
-        print(type(results[0][client.SEARCH_RESULT_METADATA_IDX]))
-
         docs = [
             (
                 Document(
@@ -537,7 +514,7 @@ class TimescaleVector(VectorStore):
             List of Documents most similar to the query vector.
         """
         docs_and_scores = self.similarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter, predicates=predicates
+            embedding=embedding, k=k, filter=filter, predicates=predicates, **kwargs
         )
         return [doc for doc, _ in docs_and_scores]
 
@@ -560,7 +537,7 @@ class TimescaleVector(VectorStore):
             List of Documents most similar to the query vector.
         """
         docs_and_scores = await self.asimilarity_search_with_score_by_vector(
-            embedding=embedding, k=k, filter=filter, predicates=predicates
+            embedding=embedding, k=k, filter=filter, predicates=predicates, **kwargs
         )
         return [doc for doc, _ in docs_and_scores]
 
@@ -834,40 +811,16 @@ class TimescaleVector(VectorStore):
         self.sync_client.delete_by_metadata(filter)
         return True
 
-    class IndexType(enum.Enum):
+    class IndexType(str, enum.Enum):
         """Enumerator for the supported Index types"""
-        TIMESCALE_VECTOR = 1
-        PGVECTOR_IVFFLAT = 2
-        PGVECTOR_HNSW = 3
+        TIMESCALE_VECTOR = "tsv"
+        PGVECTOR_IVFFLAT = "ivfflat"
+        PGVECTOR_HNSW = "hnsw"
 
-    # ---8<---configure Index defaults ---
     DEFAULT_INDEX_TYPE = IndexType.TIMESCALE_VECTOR
-    DEFAULT_TSV_USE_PQ = False
-    DEFAULT_TSV_NUM_NEIGHBORS = 100
-    DEFAULT_TSV_SEARCH_LIST_SIZE = 100
-    DEFAULT_TSV_MAX_ALPHA = 1.2
-    DEFAULT_TSV_VECTOR_LENGTH = 128
-    DEFAULT_PGV_IVFLAT_NUM_RECORDS = 100
-    DEFAULT_PGV_IVFLAT_NUM_LISTS = 10
-    DEFAULT_PGV_HNSW_M = 10
-    DEFAULT_PGV_HNSW_EF = 20
-    # --- configure Index defaults --->8---
-
-    class IndexOptions(str, enum.Enum):
-        """Enumerator for the Index creation options"""
-        PGV_IVFLAT_NUM_RECORDS = "num_rows"
-        PGV_IVFLAT_NUM_LISTS = "num_lists"
-        PGV_HNSW_M = "m"
-        PGV_HNSW_EF = "ef"
-        TSV_USE_PQ = "use_pq"
-        TSV_NUM_NEIGHBORS = "num_neighbors"
-        TSV_SEARCH_LIST_SIZE = "search_list_size"
-        TSV_MAX_ALPHA = "max_alpha"
-        TSV_VECTOR_LENGTH = "pq_vector_length"
 
     def create_index(
             self,
-            index_name: Optional[str] = None,
             index_type: IndexType = DEFAULT_INDEX_TYPE,
             **kwargs: Any):
         try:
@@ -879,19 +832,13 @@ class TimescaleVector(VectorStore):
             )
 
         if (index_type == self.IndexType.PGVECTOR_IVFFLAT):
-            pgv_num_rows = kwargs.get(self.IndexOptions.PGV_IVFLAT_NUM_RECORDS, self.DEFAULT_PGV_IVFLAT_NUM_RECORDS)
-            pgv_num_lists = kwargs.get(self.IndexOptions.PGV_IVFLAT_NUM_LISTS, self.DEFAULT_PGV_IVFLAT_NUM_LISTS)
-            self.sync_client.create_embedding_index(client.IvfflatIndex(pgv_num_rows, pgv_num_lists))
+            self.sync_client.create_embedding_index(client.IvfflatIndex(**kwargs))
 
         if (index_type == self.IndexType.PGVECTOR_HNSW):
-            pgv_m = kwargs.get(self.IndexOptions.PGV_HNSW_M, self.DEFAULT_PGV_HNSW_M)
-            pgv_ef = kwargs.get(self.IndexOptions.PGV_HNSW_EF, self.DEFAULT_PGV_HNSW_EF)
-            self.sync_client.create_embedding_index(client.HNSWIndex(pgv_m, pgv_ef))
+            self.sync_client.create_embedding_index(client.HNSWIndex(**kwargs))
 
         if (index_type == self.IndexType.TIMESCALE_VECTOR):
-            use_pq = kwargs.get(self.IndexOptions.TSV_USE_PQ, self.DEFAULT_TSV_USE_PQ)
-            num_neighbors = kwargs.get(self.IndexOptions.TSV_NUM_NEIGHBORS, self.DEFAULT_TSV_NUM_NEIGHBORS)
-            search_list_size = kwargs.get(self.IndexOptions.TSV_SEARCH_LIST_SIZE, self.DEFAULT_TSV_SEARCH_LIST_SIZE)
-            max_alpha = kwargs.get(self.IndexOptions.TSV_MAX_ALPHA, self.DEFAULT_TSV_MAX_ALPHA)
-            vector_length = kwargs.get(self.IndexOptions.TSV_VECTOR_LENGTH, self.DEFAULT_TSV_VECTOR_LENGTH)
-            self.sync_client.create_embedding_index(client.TimescaleVectorIndex(use_pq, num_neighbors, search_list_size, max_alpha, vector_length))
+            self.sync_client.create_embedding_index(client.TimescaleVectorIndex(**kwargs))
+
+    def drop_index(self):
+        self.sync_client.drop_embedding_index()
